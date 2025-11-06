@@ -1,0 +1,71 @@
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+
+st.set_page_config(page_title="Vijay Stock Guru – India Edition", page_icon="💹")
+
+st.title("🇮🇳 Vijay Stock Guru – India Edition")
+st.caption("Powered by Chat Bhaiya 🔹 Learning & Analysis Tool")
+
+st.markdown("📈 यह ऐप भारतीय NSE स्टॉक्स का विश्लेषण करता है और Intrinsic Value, Margin of Safety, तथा Strength Score दिखाता है।")
+
+# --- Input Section ---
+symbol = st.text_input("Enter NSE Stock Symbol (e.g., TCS.NS, RELIANCE.NS, INFY.NS):")
+
+if st.button("🔍 Fetch Data"):
+    try:
+        data = yf.Ticker(symbol)
+        info = data.info
+
+        eps = info.get("trailingEps", None)
+        market_price = info.get("currentPrice", None)
+        pe_ratio = info.get("trailingPE", None)
+        roe = info.get("returnOnEquity", 0)
+        roce = info.get("returnOnAssets", 0)
+        debt_equity = info.get("debtToEquity", 0)
+
+        if eps and market_price and pe_ratio:
+            st.success("✅ Data fetched successfully!")
+
+            eps = st.number_input("EPS (Earnings Per Share)", value=float(eps))
+            growth = st.number_input("Annual Growth Rate (%)", value=10.0)
+            pe_ratio = st.number_input("P/E Ratio", value=float(pe_ratio))
+            market_price = st.number_input("Market Price (₹)", value=float(market_price))
+            roe = st.number_input("ROE (%)", value=float(roe * 100 if roe else 0))
+            roce = st.number_input("ROCE (%)", value=float(roce * 100 if roce else 0))
+            debt_equity = st.number_input("Debt-to-Equity", value=float(debt_equity))
+
+            if st.button("📊 Analyze Stock"):
+                intrinsic_value = eps * (8.5 + (2 * growth))
+                margin_of_safety = ((intrinsic_value - market_price) / market_price) * 100
+
+                score = 0
+                if margin_of_safety > 25: score += 2
+                elif margin_of_safety > 10: score += 1
+                if roe > 15: score += 1
+                if roce > 15: score += 1
+                if debt_equity < 1: score += 1
+
+                verdict = "💹 Strong Stock" if score >= 4 else "⚖️ Moderate Stock" if score >= 2 else "❌ Weak Stock"
+
+                st.subheader("📊 Stock Analysis Result")
+                st.write(f"**Intrinsic Value:** ₹{intrinsic_value:.2f}")
+                st.write(f"**Margin of Safety:** {margin_of_safety:.2f}%")
+                st.write(f"**Strength Score:** {score}/5")
+                st.success(verdict)
+        else:
+            st.warning("❌ Data not available for this symbol. Try another NSE stock.")
+
+    except Exception as e:
+        st.error(f"⚠️ Error fetching data: {e}")
+
+# --- Info Section ---
+with st.expander("📘 Learn Basic Terms"):
+    st.markdown("""
+    - **EPS (Earnings Per Share):** कंपनी प्रति शेयर कितना मुनाफा कमा रही है  
+    - **P/E Ratio:** शेयर की कीमत बनाम मुनाफा — कम हो तो बेहतर  
+    - **ROE:** कंपनी अपने शेयरधारकों की पूंजी से कितना रिटर्न दे रही है  
+    - **ROCE:** कंपनी अपने कुल पूंजी पर कितना रिटर्न कमा रही है  
+    - **Debt-to-Equity:** 1 से कम हो तो अच्छा  
+    - **Margin of Safety:** Intrinsic Value अगर ज़्यादा हो तो खरीदने का मौका  
+    """)
