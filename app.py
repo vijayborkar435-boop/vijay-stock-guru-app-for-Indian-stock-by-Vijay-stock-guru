@@ -16,24 +16,30 @@ if symbol:
         else:
             st.success(f"✅ Data loaded successfully for {symbol}")
 
-            fig = go.Figure(
-                data=[go.Candlestick(
-                    x=data.index,
-                    open=data['Open'],
-                    high=data['High'],
-                    low=data['Low'],
-                    close=data['Close']
-                )]
-            )
+            # Reset index for safety
+            data.reset_index(inplace=True)
+
+            # Plot candlestick
+            fig = go.Figure(data=[go.Candlestick(
+                x=data['Date'],
+                open=data['Open'],
+                high=data['High'],
+                low=data['Low'],
+                close=data['Close'],
+                name='Candlestick'
+            )])
 
             fig.update_layout(
-                title=f"{symbol} - Candlestick Chart",
+                title=f"{symbol} - Candlestick Chart (6 months)",
                 xaxis_title="Date",
                 yaxis_title="Price (INR)",
-                xaxis_rangeslider_visible=False,
-                template="plotly_white",
-                height=600
+                xaxis_rangeslider_visible=True,
+                template="plotly_dark",
+                height=700
             )
+
+            # Auto range fix
+            fig.update_yaxes(autorange=True)
 
             st.plotly_chart(fig, use_container_width=True)
 
@@ -41,4 +47,4 @@ if symbol:
         st.error(f"⚠️ Error fetching or plotting data: {e}")
 
 else:
-    st.info("Enter a stock symbol above to see the chart.")           
+    st.info("Enter a stock symbol above to see the chart.")
