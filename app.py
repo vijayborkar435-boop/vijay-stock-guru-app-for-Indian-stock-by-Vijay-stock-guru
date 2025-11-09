@@ -292,7 +292,6 @@ if symbol:
                 """)
 
     except Exception as e:
-        st.error(f"⚠️ Error fetching or plotting data: {e}")
-
+        
 else:
     st.info("👉 Please enter a stock symbol above to start analysis.")
