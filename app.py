@@ -1,52 +1,87 @@
-import streamlit as st
 import yfinance as yf
-import plotly.graph_objects as go
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
 
-st.set_page_config(page_title="Vijay Stock Guru", layout="wide")
-st.title("📈 Vijay Stock Guru - NSE Stock Chart")
+# ==============================
+# FUNDAMENTAL + TECHNICAL COMBO
+# ==============================
 
-symbol = st.text_input("Enter NSE Stock Symbol (e.g., RELIANCE.NS, TCS.NS, HDFCBANK.NS):")
-
-if symbol:
+def analyze_stock(symbol):
     try:
-        # Fetch data
-        data = yf.download(symbol, period="6mo", interval="1d", progress=False)
-        
-        if data is None or data.empty:
-            st.error("❌ No data found! Please check the symbol name (e.g., RELIANCE.NS)")
-        else:
-            st.success(f"✅ Data loaded successfully for {symbol}")
-            
-            # Convert index to column (Date)
-            data.reset_index(inplace=True)
-            
-            # Check data head (for debugging)
-            st.write("Preview:", data.head())
-            
-            # Plot candlestick
-            fig = go.Figure(data=[
-                go.Candlestick(
-                    x=data['Date'],
-                    open=data['Open'],
-                    high=data['High'],
-                    low=data['Low'],
-                    close=data['Close'],
-                    name='Candlestick'
-                )
-            ])
-            
-            fig.update_layout(
-                title=f"{symbol} - Candlestick Chart (6 Months)",
-                xaxis_title="Date",
-                yaxis_title="Price (INR)",
-                xaxis_rangeslider_visible=True,
-                template="plotly_dark",
-                height=600
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
+        stock = yf.Ticker(symbol)
+        info = stock.info
+
+        # ============= FUNDAMENTAL DATA =============
+        fundamentals = {
+            "Company": info.get("shortName"),
+            "Market Cap (Cr)": round(info.get("marketCap", 0) / 1e7, 2),
+            "P/E Ratio": info.get("trailingPE"),
+            "EPS (₹)": info.get("trailingEps"),
+            "ROE (%)": info.get("returnOnEquity", 0) * 100 if info.get("returnOnEquity") else None,
+            "Debt to Equity": info.get("debtToEquity"),
+            "Profit Margin (%)": info.get("profitMargins", 0) * 100 if info.get("profitMargins") else None,
+            "52 Week High": info.get("fiftyTwoWeekHigh"),
+            "52 Week Low": info.get("fiftyTwoWeekLow"),
+        }
+
+        # ============= TECHNICAL DATA =============
+        data = stock.history(period="6mo")
+        data["MA20"] = data["Close"].rolling(window=20).mean()
+        data["MA50"] = data["Close"].rolling(window=50).mean()
+
+        # RSI Calculation
+        delta = data["Close"].diff()
+        gain = np.where(delta > 0, delta, 0)
+        loss = np.where(delta < 0, -delta, 0)
+        avg_gain = pd.Series(gain).rolling(window=14).mean()
+        avg_loss = pd.Series(loss).rolling(window=14).mean()
+        rs = avg_gain / avg_loss
+        data["RSI"] = 100 - (100 / (1 + rs))
+
+        # MACD Calculation
+        data["EMA12"] = data["Close"].ewm(span=12, adjust=False).mean()
+        data["EMA26"] = data["Close"].ewm(span=26, adjust=False).mean()
+        data["MACD"] = data["EMA12"] - data["EMA26"]
+        data["Signal"] = data["MACD"].ewm(span=9, adjust=False).mean()
+
+        # Breakout Detection
+        recent = data.iloc[-1]
+        past_high = data["High"].tail(20).max()
+        avg_vol = data["Volume"].tail(20).mean()
+        breakout = recent["Close"] > past_high and recent["Volume"] > avg_vol * 1.5
+
+        technicals = {
+            "Current Price (₹)": round(recent["Close"], 2),
+            "20-Day MA": round(recent["MA20"], 2),
+            "50-Day MA": round(recent["MA50"], 2),
+            "RSI": round(recent["RSI"], 2),
+            "MACD": round(recent["MACD"], 2),
+            "Signal": round(recent["Signal"], 2),
+            "Volume": int(recent["Volume"]),
+            "Avg Volume": int(avg_vol),
+            "Breakout": "✅ YES" if breakout else "❌ NO"
+        }
+
+        print(f"\n📊 ANALYSIS REPORT for {symbol}\n")
+        print("===== FUNDAMENTAL ANALYSIS =====")
+        for k, v in fundamentals.items():
+            print(f"{k:25}: {v}")
+
+        print("\n===== TECHNICAL ANALYSIS =====")
+        for k, v in technicals.items():
+            print(f"{k:25}: {v}")
+
+        print("\n------------------------------------------")
 
     except Exception as e:
-        st.error(f"⚠️ Error fetching or plotting data: {e}")
-else:
-    st.info("Please enter a stock symbol to load the chart.")
+        print(f"❌ Error fetching data for {symbol}: {e}")
+
+
+# =============================
+# Example: Analyze Multiple Stocks
+# =============================
+stocks = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS"]
+
+for s in stocks:
+    analyze_stock(s)
