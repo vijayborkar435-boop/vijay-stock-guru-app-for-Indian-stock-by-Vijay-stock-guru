@@ -184,3 +184,115 @@ if st.button("🔍 Analyze Stock"):
 
     st.write("---")
     st.caption("Tip: This is a fundamentals screening tool. For trading, combine with technical analysis and news checks.")
+    import streamlit as st
+import pandas as pd
+import yfinance as yf
+import plotly.graph_objs as go
+
+# App Configuration
+st.set_page_config(page_title="Vijay Stock Guru", layout="wide")
+
+st.title("📈 Vijay Stock Guru - Breakout, Volume & Indicators Dashboard")
+
+# User input
+symbol = st.text_input("Enter NSE Stock Symbol (e.g., RELIANCE.NS, TCS.NS, INFY.NS):")
+
+# Create Tabs
+tabs = st.tabs(["📊 Overview", "🚀 Breakout & Volume", "📈 Indicators", "ℹ️ About"])
+
+if symbol:
+    try:
+        # Download data safely
+        data = yf.download(symbol, period="6mo", interval="1d", progress=False)
+        if data.empty:
+            st.error("No data found for this symbol! Please check the symbol name (e.g., RELIANCE.NS).")
+        else:
+            # Clean data
+            data.dropna(inplace=True)
+
+            with tabs[0]:
+                st.subheader(f"Stock Data for {symbol}")
+                st.write(data.tail())
+
+                # Candlestick Chart
+                fig = go.Figure()
+                fig.add_trace(go.Candlestick(
+                    x=data.index,
+                    open=data['Open'],
+                    high=data['High'],
+                    low=data['Low'],
+                    close=data['Close'],
+                    name='Candlestick'
+                ))
+                fig.update_layout(
+                    title=f"{symbol} - 6 Month Candlestick Chart",
+                    xaxis_rangeslider_visible=False,
+                    height=600
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+            with tabs[1]:
+                st.subheader("🚀 Breakout & Volume Analysis")
+
+                # Breakout detection
+                data['Prev_High'] = data['High'].shift(1)
+                data['Prev_Low'] = data['Low'].shift(1)
+
+                latest_close = data['Close'].iloc[-1]
+                latest_high = data['High'].iloc[-1]
+                prev_high = data['Prev_High'].iloc[-1]
+
+                if (latest_high > prev_high) and (latest_close > prev_high):
+                    st.success("🚀 Bullish Breakout detected!")
+                else:
+                    st.info("📊 No breakout yet, keep watching.")
+
+                # Volume analysis
+                avg_volume = data['Volume'].mean()
+                latest_volume = data['Volume'].iloc[-1]
+                if latest_volume > 1.5 * avg_volume:
+                    st.warning("💥 High volume detected today!")
+                else:
+                    st.write("Normal trading volume observed.")
+
+            with tabs[2]:
+                st.subheader("📈 Technical Indicators")
+
+                # Moving Averages
+                data['SMA20'] = data['Close'].rolling(window=20).mean()
+                data['SMA50'] = data['Close'].rolling(window=50).mean()
+
+                fig2 = go.Figure()
+                fig2.add_trace(go.Scatter(x=data.index, y=data['Close'], mode='lines', name='Close'))
+                fig2.add_trace(go.Scatter(x=data.index, y=data['SMA20'], mode='lines', name='SMA 20', line=dict(width=2)))
+                fig2.add_trace(go.Scatter(x=data.index, y=data['SMA50'], mode='lines', name='SMA 50', line=dict(width=2)))
+                fig2.update_layout(title="Simple Moving Averages", height=400)
+                st.plotly_chart(fig2, use_container_width=True)
+
+                # RSI Calculation
+                delta = data['Close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                rs = gain / loss
+                data['RSI'] = 100 - (100 / (1 + rs))
+
+                st.line_chart(data['RSI'], height=200)
+                st.caption("RSI below 30 = Oversold | Above 70 = Overbought")
+
+            with tabs[3]:
+                st.subheader("ℹ️ About this App")
+                st.markdown("""
+                **Vijay Stock Guru** helps you:
+                - 🔍 Analyze stock charts (Candlestick)
+                - 🚀 Detect Breakouts
+                - 💥 Identify High Volume activity
+                - 📈 Track Indicators (SMA, RSI)
+
+                Built by *Vijay Borkar* using **Streamlit + yFinance + Plotly**.
+                """)
+
+    except Exception as e:
+        st.error(f"⚠️ Error fetching or plotting data: {e}")
+
+else:
+    st.info("👉 Please enter a stock symbol above to start analysis.")
