@@ -1,110 +1,104 @@
  import streamlit as st
 import yfinance as yf
 import pandas as pd
+import plotly.graph_objs as go
 
-# -------------------------------------------------------
-# 📊 Vijay Stock Guru - Final App v2 (With Volume Breakout)
-# -------------------------------------------------------
+# ------------------ PAGE SETTINGS ------------------
+st.set_page_config(page_title="📈 Vijay Stock Guru", layout="wide")
+st.title("📊 Vijay Stock Guru - Fundamental + Technical Analysis")
 
-st.set_page_config(page_title="Vijay Stock Guru", page_icon="📈", layout="wide")
+# ------------------ USER INPUT ------------------
+symbol = st.text_input("Enter NSE Stock Symbol (e.g., RELIANCE.NS, TCS.NS, HDFCBANK.NS):")
 
-st.title("📈 Vijay Stock Guru - Fundamental + Technical + Volume Breakout")
-
-# User Input
-stock_symbol = st.text_input("Enter NSE Stock Symbol (e.g. TCS.NS, RELIANCE.NS):", "RELIANCE.NS")
-
-if stock_symbol:
+if symbol:
     try:
-        stock = yf.Ticker(stock_symbol)
-        info = stock.info
-        hist = stock.history(period="6mo")
+        # Fetch Data
+        data = yf.download(symbol, period="6mo", interval="1d")
+        info = yf.Ticker(symbol).info
 
-        if hist.empty:
-            st.warning("No historical data found for this stock. Try another symbol.")
+        if data.empty:
+            st.warning("⚠️ No data found for this symbol. Please check the name.")
         else:
-            # ---------------------------------
-            # 🧾 Fundamental Data
-            st.subheader("🏢 Company Fundamentals")
+            # ------------------ FUNDAMENTAL ANALYSIS ------------------
+            st.header("🏦 Fundamental Analysis")
+
+            eps = info.get("trailingEps", 0)
+            pe = info.get("trailingPE", 0)
+            roe = info.get("returnOnEquity", 0)
+            book_value = info.get("bookValue", 0)
+            market_cap = info.get("marketCap", 0)
+            price = info.get("currentPrice", 0)
+            growth_rate = info.get("earningsGrowth", 0) or 0.08  # default 8%
+
+            # Intrinsic Value
+            intrinsic_value = (eps * (8.5 + 2 * (growth_rate * 100))) * (4.4 / 9)
+            if intrinsic_value > 0:
+                margin_of_safety = ((intrinsic_value - price) / intrinsic_value) * 100
+            else:
+                margin_of_safety = 0
+
             col1, col2, col3 = st.columns(3)
-            with col1:
-                st.write(f"**Company Name:** {info.get('longName', 'N/A')}")
-                st.write(f"**Sector:** {info.get('sector', 'N/A')}")
-                st.write(f"**Market Cap:** ₹{info.get('marketCap', 'N/A')}")
-            with col2:
-                st.write(f"**PE Ratio:** {info.get('trailingPE', 'N/A')}")
-                st.write(f"**EPS:** {info.get('trailingEps', 'N/A')}")
-                st.write(f"**Book Value:** {info.get('bookValue', 'N/A')}")
-            with col3:
-                st.write(f"**52 Week High:** {info.get('fiftyTwoWeekHigh', 'N/A')}")
-                st.write(f"**52 Week Low:** {info.get('fiftyTwoWeekLow', 'N/A')}")
-                st.write(f"**Dividend Yield:** {info.get('dividendYield', 'N/A')}")
+            col1.metric("Market Cap", f"₹ {market_cap/1e7:.2f} Cr")
+            col2.metric("Stock P/E", f"{pe}")
+            col3.metric("EPS", f"{eps:.2f}")
 
-            # ---------------------------------
-            # 📉 Technical Indicators
-            st.subheader("📊 Technical Analysis")
+            col4, col5, col6 = st.columns(3)
+            col4.metric("Book Value", f"₹ {book_value}")
+            col5.metric("ROE", f"{roe*100:.2f}%")
+            col6.metric("Intrinsic Value", f"₹ {intrinsic_value:.2f}")
 
-            hist['SMA20'] = hist['Close'].rolling(window=20).mean()
-            hist['SMA50'] = hist['Close'].rolling(window=50).mean()
-
-            delta = hist['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
-            hist['RSI'] = 100 - (100 / (1 + rs))
-
-            # ---------------------------------
-            # 🔍 Volume Breakout Detection
-            hist['AvgVol20'] = hist['Volume'].rolling(window=20).mean()
-            latest = hist.iloc[-1]
-            prev = hist.iloc[-2] if len(hist) > 1 else latest
-
-            breakout = ""
-            if (
-                latest['Volume'] > 2 * latest['AvgVol20']
-                and latest['Close'] > latest['SMA20']
-            ):
-                breakout = "🚀 High Volume Breakout Detected!"
-            elif latest['Volume'] > 1.5 * latest['AvgVol20']:
-                breakout = "📊 Volume Rising — Possible Breakout soon."
+            st.write(f"🧮 **Margin of Safety:** {margin_of_safety:.2f}%")
+            if margin_of_safety > 20:
+                st.success("✅ Safe to consider for long-term investment!")
+            elif 0 < margin_of_safety <= 20:
+                st.info("⚠️ Fairly valued — wait for a dip.")
             else:
-                breakout = "📉 No breakout currently."
+                st.error("❌ Overvalued — Avoid for now.")
 
-            # ---------------------------------
-            # 🧾 Display Tables
-            st.write("### Latest Technical Data")
-            st.dataframe(hist[['Close', 'Volume', 'AvgVol20', 'SMA20', 'SMA50', 'RSI']].tail(10))
+            # ------------------ TECHNICAL ANALYSIS ------------------
+            st.header("📈 Technical Chart & Signals")
 
-            # ---------------------------------
-            # 📢 Signal Suggestion
-            signal = ""
-            if latest['RSI'] < 30 and latest['Close'] > latest['SMA20'] > latest['SMA50']:
-                signal = "🟢 Strong Buy (Oversold & Above Averages)"
-            elif latest['RSI'] < 40 and latest['Close'] > latest['SMA20']:
-                signal = "🟢 Buy Signal"
-            elif latest['RSI'] > 70 and latest['Close'] < latest['SMA20']:
-                signal = "🔴 Sell Signal"
-            elif latest['RSI'] > 60 and latest['SMA20'] < latest['SMA50']:
-                signal = "🔴 Weak Sell (Trend Weakening)"
+            # Simple Moving Averages
+            data['SMA20'] = data['Close'].rolling(window=20).mean()
+            data['SMA50'] = data['Close'].rolling(window=50).mean()
+
+            fig = go.Figure()
+            fig.add_trace(go.Candlestick(
+                x=data.index,
+                open=data['Open'],
+                high=data['High'],
+                low=data['Low'],
+                close=data['Close'],
+                name="Price"
+            ))
+            fig.add_trace(go.Scatter(x=data.index, y=data['SMA20'], line=dict(color='orange', width=1.5), name='SMA 20'))
+            fig.add_trace(go.Scatter(x=data.index, y=data['SMA50'], line=dict(color='blue', width=1.5), name='SMA 50'))
+
+            fig.update_layout(title=f"{symbol} - Price Chart", xaxis_rangeslider_visible=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+            # ------------------ SIGNALS ------------------
+            st.subheader("📊 Signals")
+
+            latest_close = data['Close'].iloc[-1]
+            sma20 = data['SMA20'].iloc[-1]
+            sma50 = data['SMA50'].iloc[-1]
+
+            if sma20 > sma50:
+                st.success("🚀 Bullish Crossover (Uptrend)")
+            elif sma20 < sma50:
+                st.error("🔻 Bearish Crossover (Downtrend)")
             else:
-                signal = "🟡 Hold / Neutral"
+                st.info("➖ Neutral Trend")
 
-            st.subheader("📢 Signal Suggestion")
-            st.success(signal)
-
-            # ---------------------------------
-            # 💥 Breakout Status
-            st.subheader("🔥 Breakout Detector")
-            if "Breakout" in breakout:
-                st.success(breakout)
-            elif "Possible" in breakout:
-                st.warning(breakout)
-            else:
-                st.info(breakout)
-
-            # ---------------------------------
-            # 📈 Chart
-            st.subheader("Stock Price Chart with SMA20 & SMA50")
-            st.line_chart(hist[['Close', 'SMA20', 'SMA50']])
+            # Volume check
+            avg_vol = data['Volume'].mean()
+            latest_vol = data['Volume'].iloc[-1]
+            if latest_vol > 1.5 * avg_vol:
+                st.warning("💥 High Volume Detected!")
 
     except Exception as e:
-        st.error(f"Error loading data: {e}")               
+        st.error(f"⚠️ Error fetching or plotting data: {e}")
+
+else:
+    st.info("Please enter a stock symbol to start analysis.")
