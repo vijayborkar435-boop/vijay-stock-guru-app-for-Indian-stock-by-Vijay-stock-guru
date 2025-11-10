@@ -47,4 +47,4 @@ try:
     st.line_chart(hist[['Close', 'SMA20', 'SMA50']])
 
 except Exception as e:
-    st.error(f"Error loading data: {e}")            
+    st.error(f"Error loading data: {e}")
