@@ -1,6 +1,8 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import plotly.graph_objects as go
+
 st.set_page_config(page_title="📈 Vijay Stock Guru", layout="wide")
 st.title("📊 Vijay Stock Guru - Fundamental + Technical + Valuation")
 
@@ -97,3 +99,5 @@ if symbol:
         st.error(f"⚠️ Error: {e}")
 else:
     st.info("Enter a stock symbol to begin analysis.")
+
+            
