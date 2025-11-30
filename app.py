@@ -1,37 +1,25 @@
 import streamlit as st
-import pandas as pd
 import yfinance as yf
-import plotly.graph_objects as go
-import numpy as np
+import pandas as pd
+st.set_page_config(page_title="📈 Vijay Stock Guru", layout="wide")
+st.title("📊 Vijay Stock Guru - Fundamental + Technical + Valuation")
 
-# App title and layout
-st.set_page_config(page_title="Vijay Stock Guru - Trend Indicators", layout="wide")
-
-st.title("📈 Vijay Stock Guru - Trend Analysis Dashboard")
-
-# User input
-symbol = st.text_input("Enter NSE Stock Symbol (e.g., RELIANCE.NS, TCS.NS, HDFCBANK.NS):")
+symbol = st.text_input("Enter NSE Symbol (e.g. RELIANCE.NS, TCS.NS, HDFCBANK.NS):")
 
 if symbol:
     try:
         data = yf.download(symbol, period="6mo", interval="1d")
+
         if data.empty:
-            st.warning("⚠️ No data found! Please check the stock symbol.")
+            st.warning("⚠️ No data found for this symbol.")
         else:
-            # Moving Averages
-            data['EMA20'] = data['Close'].ewm(span=20, adjust=False).mean()
-            data['EMA50'] = data['Close'].ewm(span=50, adjust=False).mean()
-            data['EMA200'] = data['Close'].ewm(span=200, adjust=False).mean()
+            # --- 📈 Technical Analysis ---
+            st.subheader("📊 Technical Chart")
 
-            # MACD Calculation
-            shortEMA = data['Close'].ewm(span=12, adjust=False).mean()
-            longEMA = data['Close'].ewm(span=26, adjust=False).mean()
-            data['MACD'] = shortEMA - longEMA
-            data['Signal_Line'] = data['MACD'].ewm(span=9, adjust=False).mean()
+            data['SMA20'] = data['Close'].rolling(20).mean()
+            data['SMA50'] = data['Close'].rolling(50).mean()
 
-            # Candlestick chart
             fig = go.Figure()
-
             fig.add_trace(go.Candlestick(
                 x=data.index,
                 open=data['Open'],
@@ -40,45 +28,72 @@ if symbol:
                 close=data['Close'],
                 name='Candlestick'
             ))
-
-            # Add EMAs
-            fig.add_trace(go.Scatter(x=data.index, y=data['EMA20'], line=dict(color='blue', width=1.5), name='EMA 20'))
-            fig.add_trace(go.Scatter(x=data.index, y=data['EMA50'], line=dict(color='orange', width=1.5), name='EMA 50'))
-            fig.add_trace(go.Scatter(x=data.index, y=data['EMA200'], line=dict(color='green', width=1.5), name='EMA 200'))
-
-            fig.update_layout(
-                title=f"{symbol} Trend Chart with EMAs",
-                xaxis_rangeslider_visible=False,
-                height=600
-            )
-
+            fig.add_trace(go.Scatter(x=data.index, y=data['SMA20'], line=dict(color='orange', width=1.5), name='SMA 20'))
+            fig.add_trace(go.Scatter(x=data.index, y=data['SMA50'], line=dict(color='blue', width=1.5), name='SMA 50'))
+            fig.update_layout(title=f"{symbol} Price Chart", xaxis_rangeslider_visible=False, height=500)
             st.plotly_chart(fig, use_container_width=True)
 
-            # MACD Chart
-            macd_fig = go.Figure()
-            macd_fig.add_trace(go.Scatter(x=data.index, y=data['MACD'], line=dict(color='purple', width=1.5), name='MACD'))
-            macd_fig.add_trace(go.Scatter(x=data.index, y=data['Signal_Line'], line=dict(color='red', width=1.5), name='Signal Line'))
-
-            macd_fig.update_layout(title="MACD Indicator", height=300)
-            st.plotly_chart(macd_fig, use_container_width=True)
-
-            # Volume Chart
-            vol_fig = go.Figure()
-            vol_fig.add_trace(go.Bar(x=data.index, y=data['Volume'], name='Volume'))
-            vol_fig.update_layout(title="Volume Chart", height=250)
-            st.plotly_chart(vol_fig, use_container_width=True)
-
-            # Trend Detection Message
-            st.subheader("📊 Trend Summary:")
-            if data['EMA20'].iloc[-1] > data['EMA50'].iloc[-1] > data['EMA200'].iloc[-1]:
-                st.success("🚀 Strong Uptrend detected (Bullish Market).")
-            elif data['EMA20'].iloc[-1] < data['EMA50'].iloc[-1] < data['EMA200'].iloc[-1]:
-                st.error("🔻 Strong Downtrend detected (Bearish Market).")
+            # Signal
+            sma20 = data['SMA20'].iloc[-1]
+            sma50 = data['SMA50'].iloc[-1]
+            if sma20 > sma50:
+                st.success("🚀 Bullish crossover (Uptrend likely)")
+            elif sma20 < sma50:
+                st.error("🔻 Bearish crossover (Downtrend likely)")
             else:
-                st.info("⚖️ Mixed or Sideways Trend. Wait for confirmation.")
+                st.info("➖ Neutral trend")
+
+            # --- 💼 Fundamental Analysis ---
+            st.subheader("💼 Fundamental Analysis")
+            ticker = yf.Ticker(symbol)
+            info = ticker.info if hasattr(ticker, "info") else {}
+
+            def safe_get(key, default="N/A"):
+                value = info.get(key, default)
+                if isinstance(value, (int, float)) and abs(value) > 1e9:
+                    return f"{value/1e7:.2f} Cr"
+                return value
+
+            fundamentals = {
+                "Company Name": safe_get("longName"),
+                "Sector": safe_get("sector"),
+                "Market Cap": safe_get("marketCap"),
+                "PE Ratio": safe_get("trailingPE"),
+                "EPS (TTM)": safe_get("trailingEps"),
+                "ROE": f"{info.get('returnOnEquity', 0)*100:.2f}%" if info.get("returnOnEquity") else "N/A",
+                "Book Value": safe_get("bookValue"),
+                "Debt to Equity": safe_get("debtToEquity"),
+                "Profit Margin": f"{info.get('profitMargins', 0)*100:.2f}%" if info.get("profitMargins") else "N/A",
+                "Dividend Yield": f"{info.get('dividendYield', 0)*100:.2f}%" if info.get("dividendYield") else "N/A"
+            }
+
+            df = pd.DataFrame(list(fundamentals.items()), columns=["Metric", "Value"])
+            st.table(df)
+
+            # --- 💰 Intrinsic Value ---
+            st.subheader("💰 Intrinsic Value (DCF Based)")
+            eps = info.get("trailingEps", None)
+            growth = info.get("earningsQuarterlyGrowth", 0.10)
+            discount_rate = 0.12
+            current_price = info.get("currentPrice", None)
+
+            if eps and current_price:
+                try:
+                    intrinsic_value = eps * (1 + growth) / (discount_rate - growth)
+                    st.write(f"📍 Intrinsic Value ≈ ₹{intrinsic_value:.2f}")
+                    st.write(f"💵 Current Price: ₹{current_price}")
+                    if intrinsic_value > current_price:
+                        diff = ((intrinsic_value - current_price) / current_price) * 100
+                        st.success(f"✅ Undervalued by {diff:.2f}%")
+                    else:
+                        diff = ((current_price - intrinsic_value) / intrinsic_value) * 100
+                        st.error(f"❌ Overvalued by {diff:.2f}%")
+                except Exception:
+                    st.warning("⚠️ Not enough data for DCF calculation.")
+            else:
+                st.info("EPS or Price data not available for DCF model.")
 
     except Exception as e:
-        st.error(f"Error fetching or plotting data: {e}")
-
+        st.error(f"⚠️ Error: {e}")
 else:
-    st.info("👉 Please enter a valid stock symbol to begin analysis.")
+    st.info("Enter a stock symbol to begin analysis.")
