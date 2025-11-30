@@ -99,5 +99,3 @@ if symbol:
         st.error(f"⚠️ Error: {e}")
 else:
     st.info("Enter a stock symbol to begin analysis.")
-
-            
