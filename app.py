@@ -1,28 +1,37 @@
 import streamlit as st
-import yfinance as yf
 import pandas as pd
+import yfinance as yf
 import plotly.graph_objects as go
+import numpy as np
 
-st.set_page_config(page_title="📈 Vijay Stock Guru", layout="wide")
-st.title("📊 Vijay Stock Guru - Fundamental + Technical Analysis")
+# App title and layout
+st.set_page_config(page_title="Vijay Stock Guru - Trend Indicators", layout="wide")
 
-symbol = st.text_input("Enter NSE Symbol (e.g. RELIANCE.NS, TCS.NS):")
+st.title("📈 Vijay Stock Guru - Trend Analysis Dashboard")
+
+# User input
+symbol = st.text_input("Enter NSE Stock Symbol (e.g., RELIANCE.NS, TCS.NS, HDFCBANK.NS):")
 
 if symbol:
     try:
         data = yf.download(symbol, period="6mo", interval="1d")
-
         if data.empty:
-            st.warning("⚠️ No data found. Please check symbol.")
+            st.warning("⚠️ No data found! Please check the stock symbol.")
         else:
-            st.subheader("📈 Technical Chart")
-
             # Moving Averages
-            data['SMA20'] = data['Close'].rolling(window=20).mean()
-            data['SMA50'] = data['Close'].rolling(window=50).mean()
+            data['EMA20'] = data['Close'].ewm(span=20, adjust=False).mean()
+            data['EMA50'] = data['Close'].ewm(span=50, adjust=False).mean()
+            data['EMA200'] = data['Close'].ewm(span=200, adjust=False).mean()
 
-            # Plotly Chart
+            # MACD Calculation
+            shortEMA = data['Close'].ewm(span=12, adjust=False).mean()
+            longEMA = data['Close'].ewm(span=26, adjust=False).mean()
+            data['MACD'] = shortEMA - longEMA
+            data['Signal_Line'] = data['MACD'].ewm(span=9, adjust=False).mean()
+
+            # Candlestick chart
             fig = go.Figure()
+
             fig.add_trace(go.Candlestick(
                 x=data.index,
                 open=data['Open'],
@@ -31,61 +40,45 @@ if symbol:
                 close=data['Close'],
                 name='Candlestick'
             ))
-            fig.add_trace(go.Scatter(
-                x=data.index, y=data['SMA20'],
-                line=dict(color='orange', width=1.5),
-                name='SMA 20'
-            ))
-            fig.add_trace(go.Scatter(
-                x=data.index, y=data['SMA50'],
-                line=dict(color='blue', width=1.5),
-                name='SMA 50'
-            ))
+
+            # Add EMAs
+            fig.add_trace(go.Scatter(x=data.index, y=data['EMA20'], line=dict(color='blue', width=1.5), name='EMA 20'))
+            fig.add_trace(go.Scatter(x=data.index, y=data['EMA50'], line=dict(color='orange', width=1.5), name='EMA 50'))
+            fig.add_trace(go.Scatter(x=data.index, y=data['EMA200'], line=dict(color='green', width=1.5), name='EMA 200'))
 
             fig.update_layout(
-                title=f"{symbol} Price Chart",
+                title=f"{symbol} Trend Chart with EMAs",
                 xaxis_rangeslider_visible=False,
-                height=500
+                height=600
             )
 
             st.plotly_chart(fig, use_container_width=True)
 
-            # Signal
-            sma20 = data['SMA20'].iloc[-1]
-            sma50 = data['SMA50'].iloc[-1]
+            # MACD Chart
+            macd_fig = go.Figure()
+            macd_fig.add_trace(go.Scatter(x=data.index, y=data['MACD'], line=dict(color='purple', width=1.5), name='MACD'))
+            macd_fig.add_trace(go.Scatter(x=data.index, y=data['Signal_Line'], line=dict(color='red', width=1.5), name='Signal Line'))
 
-            if sma20 > sma50:
-                st.success("🚀 Bullish crossover - Possible Uptrend")
-            elif sma20 < sma50:
-                st.error("🔻 Bearish crossover - Possible Downtrend")
+            macd_fig.update_layout(title="MACD Indicator", height=300)
+            st.plotly_chart(macd_fig, use_container_width=True)
+
+            # Volume Chart
+            vol_fig = go.Figure()
+            vol_fig.add_trace(go.Bar(x=data.index, y=data['Volume'], name='Volume'))
+            vol_fig.update_layout(title="Volume Chart", height=250)
+            st.plotly_chart(vol_fig, use_container_width=True)
+
+            # Trend Detection Message
+            st.subheader("📊 Trend Summary:")
+            if data['EMA20'].iloc[-1] > data['EMA50'].iloc[-1] > data['EMA200'].iloc[-1]:
+                st.success("🚀 Strong Uptrend detected (Bullish Market).")
+            elif data['EMA20'].iloc[-1] < data['EMA50'].iloc[-1] < data['EMA200'].iloc[-1]:
+                st.error("🔻 Strong Downtrend detected (Bearish Market).")
             else:
-                st.info("➖ Neutral signal")
-
-            # ------------------------
-            # 📊 Fundamental Analysis
-            # ------------------------
-            st.subheader("💼 Fundamental Analysis")
-
-            info = yf.Ticker(symbol).info
-
-            fundamentals = {
-                "Company Name": info.get("longName", "N/A"),
-                "Sector": info.get("sector", "N/A"),
-                "Market Cap": f"{info.get('marketCap', 0)/1e7:.2f} Cr",
-                "PE Ratio": info.get("trailingPE", "N/A"),
-                "EPS (TTM)": info.get("trailingEps", "N/A"),
-                "ROE (approx)": f"{info.get('returnOnEquity', 0)*100:.2f}%" if info.get("returnOnEquity") else "N/A",
-                "Book Value": info.get("bookValue", "N/A"),
-                "Debt to Equity": info.get("debtToEquity", "N/A"),
-                "Profit Margin": f"{info.get('profitMargins', 0)*100:.2f}%" if info.get("profitMargins") else "N/A",
-                "Dividend Yield": f"{info.get('dividendYield', 0)*100:.2f}%" if info.get("dividendYield") else "N/A"
-            }
-
-            df = pd.DataFrame(list(fundamentals.items()), columns=["Metric", "Value"])
-            st.table(df)
+                st.info("⚖️ Mixed or Sideways Trend. Wait for confirmation.")
 
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error fetching or plotting data: {e}")
 
 else:
-    st.info("Enter stock symbol to begin analysis.")
+    st.info("👉 Please enter a valid stock symbol to begin analysis.")
